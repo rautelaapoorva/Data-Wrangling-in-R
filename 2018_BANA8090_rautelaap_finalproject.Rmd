@@ -1,0 +1,784 @@
+---
+title: "Data Wrangling Project: Understanding our customers "
+author: "Apoorva Rautela"
+date: "December 09, 2018"
+output:
+  html_document:
+    code_folding: hide
+---
+
+#{.tabset .tabset-fade}
+
+
+## Introduction
+
+
+We were provided with retailer's data to analyze and uncover any trends or answer business objectives. 
+The dataset used in this project contains household level transactions over two years from a group of 5000 households who are shoppers at a retailer. It contains all of each household's purchases, not just those from a limited number of categories. 
+
+**Objective**
+
+We want to be able to answer the following research questions:
+
+
+* Which categories of Kroger have highest? Is it somehow related to loyalty?
+* Do Demographic factors (e.g. household size, presence of children, income) affect customer spend?
+* Are customer in both the groups (loyalty and non-loyalty) different in terms of purchase behaviour?
+Do Demographic factors (e.g. household size, presence of children, income) affect being enrolled in the loyalty program?
+* How many customers are spending more over time? Less over time? Understand these customers.
+Of those customers who are spending more over time, which categories are growing at a faster rate?
+Calculate some metrics. 
+
+
+
+**Approach**
+
+We analyze purchase behaviour and patterns w.r.t demographics, products and loyalty program, in terms of frequency of purchases, total products purchased and their types and amount spent.
+
+As a part of our final submission we have divided our report into the following section:
+
+* Introduction
+* Packages Required
+* Data Preparation
+* Exploratory Data Analysis
+* Summary
+
+
+Exploratory Data Analysis has been further divided into 3 sub-sections:
+
+* Analysis by demographics
+* Analysis by products
+* Analysis by loyalty program
+
+**Analysis' use**
+
+Our analysis will help in understanding who are our customer and what are the top products. It might also  be helpful in converting non-loyalty customers into loyalty ones by identifying the purchase behaviour and the gaps between two purchase journeys.
+
+
+
+
+## Packages Required
+
+Following packages need to be loaded :
+
+* __library(tidyverse)__	: to install packages readr,dplyr,tidyr,ggplot2,stringr
+* __library(knitr)__	    : to perform dynamic report generation
+* __library(rmarkdown)__	: to create R Markdown documents
+* __library(lubridate)__  : to manipulate dates related data
+* __library(DT)__ : to display tables
+* __library(ggpubr)__ : to manipulate plots
+* __library(gridExtra)__ : to manipulate plots
+
+```{r message=FALSE}
+library(tidyverse)
+library(stringr)
+library(knitr)
+library(rmarkdown)
+library(lubridate)
+library(DT)
+library(ggpubr)
+library(gridExtra)
+```
+
+
+## Data Preparation {.tabset .tabset-fade .tabset-pills}
+
+### 1. Data Import 
+
+**Data Source**
+8451° [Link to Original dataset](https://www.8451.com/area51/)
+
+The data was provided by the retailer which they had collected by recording the purchases made by the customer.
+ 
+ 
+```{r message=FALSE, warning=FALSE, error=FALSE}
+
+transaction <- read_csv("data/5000_transactions.csv")
+household <- read_csv("data/5000_households.csv")
+product <- read_csv("data/5000_products.csv")
+
+# renaming columns to more meaningful names
+colnames(transaction) <- c("basket_id","household_id","date","product_id","spend_amt",
+                           "total_units","store_region","week_num","year")
+colnames(product) <- c("product_id","department","commodity","brand_type","is_natural")
+colnames(household) <- c ('household_id', 'loyalty_card', 'age_range','marital_status', 
+                          'income_range','homeowner','household_composition','household_size','children')
+
+```
+
+### 2. Data Description 
+
+5000 households' purchases were tracked in the data, inluding the transactions made by the them, the product purchased. Resultantly, the dataset consists of three tables (products, transactions and households) 
+
+Description of each table:
+
+__Variables from Products Table:__
+ 
+* product_id : Unique identifier for each product
+* department : Department to which the product belongs
+* commodity : Commodity type of the product
+* brand_type : Whether the brand is national or private
+* is_natural : Whether the product is natural or not
+
+__Variables from Transaction Table:__
+
+* basket_id : Unique identifier for each basket (a basket contains all purchases made in 1 shopping journey)
+* household_id : Unique identifier for each household
+* date : Date of purchase
+* product_id : Unique identifier for each product
+* spend_amt : Amount (in dollars) spent for a particular purchase
+* total_units : Total units of items purchased
+* store_region : There are four regions (central, east, west south) where the stores are located
+* week_num : Week number for when the purchase was made (both years combined)
+* Year : Year when the purchase was made
+
+__Variables from Household Table:__
+
+* household_id : Unique identifier for each household
+* loyalty_card : Whether the shopper has a store loyalty card or not
+* age_range : There are 7 levels of age range of shoppers (19-24, 24-53 and so on)
+* marital_status : Whether the shopper is married, single or the status is unknown
+* income_range : Income range of the shopper
+* homeowner: Whether the shopper is a homeowner or a renter
+* household_composition : Describes the composition of household; adults and kids are in the house
+* household_size : Total number of people in the household
+* children : Total number of children in the household
+
+
+```{r }
+str(transaction)
+str(product)
+str(household)
+```
+ 
+
+### 3. Data Cleaning
+
+Data cleaning was performed in order to remove any entry/disrepancy which might hinder our analysis. 
+Each table was checked for the following: 
+
+* Each variable has correct data type
+* No Duplicate values are present
+* No Missing values are present - completeness check
+* No White spaces around variables or values
+* If any column needs to be spread or gathered, or separated or united
+* Drop any redundant data
+
+Each table was cleaned as a whole before moving to the next one.
+
+__1. TRANSACTION TABLE:__
+
+Cleaning the transaction table to ensure the above mentioned points:
+
+* Converting to appropriate datatype:  'date' to date format
+* Checking duplicate observations and removing them: no duplicates found
+
+
+```{r results="hide"}
+
+transaction$date <- as.character(transaction$date)
+transaction$date <- dmy(transaction$date)
+transaction$store_region <- as.factor(transaction$store_region)
+
+# checking duplicate observations and removing them: no duplicates found
+unique(transaction)
+```
+
+```{r }
+
+# completeness check for each variable for each table: transaction does not have NA
+colSums(is.na(transaction))/nrow(transaction)
+print(paste(sum(complete.cases(transaction)),"- total number of complete cases"))
+```
+The cleaned table consists of all variables having correct datatypes, and no duplicate values
+in the data. Also, there are no missing values or incomplete entries in the table now.
+
+
+
+__2. HOUSEHOLD TABLE__
+The column names in the household tables need to be fixed as the variable names are padded with empty spaces on with sides. Also, there are string values in place of NA which can be source of issue in our analysis in the future.
+Lastly, since read_csv does not create factor values by default we will convert our respective variables to factors. Therefore, actions performed are:
+
+* Removing spaces around values: using string trim
+* Detecting "null" "Unavailable" any other such values and setting them to NA
+* Converting to appropriate datatype
+* checking duplicate observations and removing them
+* completeness check for each variable for each table: there were missing values in the table
+
+
+```{r results="hide"}
+
+# removing spaces around values: using string trim
+str_trim(household$household_size)
+str_trim(household$income_range)
+str_trim(household$age_range)
+str_trim(household$household_composition)
+
+# detecting "null" "Unavailable" any other such values and setting them to NA
+household$age_range[household$age_range=="NOT AVAILABLE"|household$age_range=="null"] <- NA
+household$marital_status[household$marital_status=="Unknown"|household$marital_status=="null"]<- NA
+household$income_range[household$income_range=="null"] <- NA
+household$homeowner[household$homeowner=="Unknown"|household$homeowner=="null"] <- NA
+household$household_size[household$household_size=="null"] <- NA
+household$children[household$children=="null"|household$children=="NOT AVAILABLE"] <- NA
+
+# converting to appropriate datatype
+#converting characters to factors for categorical variables
+household$loyalty_card  <- as.factor(household$loyalty_card)
+household$age_range  <- as.factor(household$age_range)
+household$marital_status  <- as.factor(household$marital_status)
+household$income_range  <- as.factor(household$income_range)
+household$homeowner  <- as.factor(household$homeowner)
+household$household_size  <- as.factor(household$household_size)
+household$children  <- as.factor(household$children)
+household$household_composition  <- as.factor(household$household_composition)
+
+# checking duplicate observations and removing them
+unique(household)
+
+# checking proportion of missing values in each column
+colSums(is.na(household))/nrow(household)
+household <- na.omit(household)
+
+# cleaned data has 1684 observations
+dim(household)
+
+# completeness check for table: 
+print(paste(sum(complete.cases(household)),"- total number of complete cases"))
+```
+
+The final cleaned data has 9 variables with 1684 observations.
+
+
+__3. PRODUCT TABLE__
+
+Analyzing the Product table we found issue of missing values and incorrect datatypes.
+Post fixing both the issues we have a cleaned table
+
+```{r results="hide"}
+
+# converting to appropriate datatype
+#converting characters to factors for categorical variables
+product$department <- as.factor(product$department)
+product$commodity <- as.factor(product$commodity)
+product$brand_type <- as.factor(product$brand_type)
+product$is_natural <- as.factor(product$is_natural)
+
+# checking duplicate observations and removing them
+unique(product)
+
+# checking proportion of missing values in each column
+colSums(is.na(product))/nrow(product)
+
+# completeness check for each variable for each table: transaction does not have NA
+print(paste(sum(complete.cases(product)),"- total number of complete cases"))
+
+```
+
+
+*Finally, we join all he cleaned tables into a single table namely df.*
+
+```{r message=FALSE}
+
+## combining all tables to a cleaned base table to hereafter work upon: cleaned_data
+joined1 = inner_join(transaction,household)
+df <- inner_join(joined1,product)
+
+```
+
+
+### 4. Data Preview
+
+The final cleaned data consists of **368,106** observations and **20** variables. The following things were observed in Data Cleaning:
+
+* The product and transactions table did not have any null, unknown values. But the household table had a significant amount of null, unknown & not available values. Out of the 5000 observations in the household table, after data cleaning we had 1684 observations.
+*  There were no outliers observed as most of the variables are categorical. 
+*  However, the 'spend' variable had negative values and we need to investigate further on what it implies. 
+(Our analysis says that it could imply a return or shopping made solely from loyalty points, but this has to be confirmed further)
+* We have to decide on how many observations we will use for our exploratory data analysis. We could do a random sampling that is a good representation of the population.
+```{r }
+datatable(head(df,10))
+str(df)
+summary(df)
+
+```
+
+
+
+
+
+
+##  Exploratory Data Analysis {.tabset .tabset-fade .tabset-pills}
+
+
+
+### Analysis by Demographics
+
+We perform analysis based on demographics to answer our research question : *Do Demographic factors (e.g. household size, presence of children, income) affect customer spend? Engagement with certain categories?*
+
+**1684** shortlisted households have spent **1.32MM** in 2016 & 2017. Here, we look at the *number of items* purchased by each household in these 2 years. We see that most households have purchased around 250 items in the 2 years.
+
+```{r }
+
+df %>%
+  group_by(household_id) %>%
+  summarise(number_of_items=sum(total_units)) %>%
+  ggplot(aes(x=number_of_items))+
+  geom_histogram(fill="darkorchid3",bins=200)+
+  labs(title="Total items purchased by each household in 2 years",
+       x="Number of items purchased", y="Count of households")+
+  theme(text = element_text(size=9),
+        axis.text.x = element_text(hjust=1))
+```
+
+Al look at household size and total children shows are perfect relation wherein most households shopping at kroger have 3 members and 1 children (this trend was found by comparing both the plots).
+Also proportionally, the households with 3 members make up for major share of the sales both the year.
+Also food department holds the major share in each type household.
+
+```{r }
+g1 <- ggplot(df,aes(x = df$household_size))+
+  geom_bar(fill = "indianred4")+
+  labs(title="Who are our customers?
+       (household size))",
+       x="Household size", y="Count of households")+
+  theme(text = element_text(size=9),
+        axis.text.x = element_text(hjust=1))
+
+g2 <- ggplot(df,aes(x=df$children))+
+  geom_bar(fill = "indianred4")+
+  labs(title="Who are our customers? 
+       (total children))",
+       x="Number of children", y="Count of households")+
+  theme(text = element_text(size=9),
+        axis.text.x = element_text(hjust=1))
+
+ggarrange(g1, g2,
+          ncol = 2, 
+          nrow = 1)
+
+df %>% 
+  group_by(household_size,year) %>% 
+  ggplot(aes(household_size,spend_amt))+
+  geom_bar(stat="summary", fun.y="sum",fill = "indianred4")+
+  facet_wrap(~year)+
+  scale_y_continuous(NULL, labels = scales::dollar)+
+  labs(title="Spend by Household Size: a comparison of the two years",
+       x="Household Size", y="Total amount spent")+
+  theme(text = element_text(size=9),
+        axis.text.x = element_text(hjust=1))
+
+df %>% 
+  group_by(household_size,year) %>% 
+  ggplot(aes(household_size,spend_amt,fill = department))+
+  geom_bar(stat="summary", fun.y="sum")+
+  scale_y_continuous(NULL, labels = scales::dollar)+
+  labs(title="Spend by Household Size : top performing departments",
+       x="Household Size", y="Total amount spent")+
+  theme(text = element_text(size=9),
+        axis.text.x = element_text(hjust=1))
+
+
+```
+ 
+ 
+ 
+A look at income range of our customers and property own status shows
+
+```{r}
+g3 <- ggplot(df,aes(x = df$homeowner))+
+  geom_bar(fill = "green4")+
+  labs(title="Who are our customers?
+       (homeowners)")+
+  theme(text = element_text(size=9),
+        axis.text.x = element_text(angle=45, hjust=1))
+
+
+g4 <- ggplot(df,aes(x = df$income_range))+
+  geom_bar(fill = "green4")+
+  labs(title="Who are our customers?
+       (income range)")+
+  theme(text = element_text(size=9),
+        axis.text.x = element_text(angle=45, hjust=1))
+
+
+ggarrange(g3, g4,
+          ncol = 2, 
+          nrow = 1)
+
+g5 <- df %>% 
+  group_by(homeowner,year) %>% 
+  ggplot(aes(homeowner,spend_amt))+
+  geom_bar(stat="summary", fun.y="sum",fill = "green4")+
+  facet_wrap(~year)+
+  scale_y_continuous(NULL, labels = scales::dollar)+
+  labs(title="Spend by Homeowner 
+       (homeowner/rental)",
+       x="Homeowner Type", y="Total amount spent")+
+  theme(text = element_text(size=9),
+        axis.text.x = element_text(angle=45, hjust=1))
+
+g6 <- df %>% 
+  group_by(income_range,year) %>% 
+  ggplot(aes(income_range,spend_amt))+
+  geom_bar(stat="summary", fun.y="sum",fill = "green4")+
+  facet_wrap(~year)+
+  scale_y_continuous(NULL, labels = scales::dollar)+
+  labs(title="Spend by income_range ")+
+  theme(text = element_text(size=9),
+        axis.text.x = element_text(angle=45, hjust=1))
+
+ggarrange(g5, g6,
+          ncol = 2, 
+          nrow = 1)
+
+df %>% 
+  group_by(income_range,year) %>% 
+  ggplot(aes(income_range,spend_amt, fill=department))+
+  geom_bar(stat="summary", fun.y="sum")+
+  scale_y_continuous(NULL, labels = scales::dollar)+
+  labs(title="Spend by income_range ")+
+  theme(text = element_text(size=9),
+        axis.text.x = element_text(angle=45, hjust=1))
+
+```
+
+
+
+
+
+
+
+
+
+As seen below, sales by loyalty customers made up for around *92.5%* of the total sales.
+This trend was consistent in both the years.
+
+```{r }
+g7 <- ggplot(df,aes(x = df$loyalty_card,fill=loyalty_card))+
+  geom_bar(position = "stack")+
+  labs(title="Who are our customers?
+       (loyalty program))",
+       x="Loyalty card", y="Count of households")+
+  theme(text = element_text(size=9),
+        axis.text.x = element_text(hjust=1))
+
+
+g8 <- df %>% 
+  group_by(household_size,year) %>% 
+  ggplot(aes(year,spend_amt, fill=loyalty_card))+
+  geom_bar(stat="summary", fun.y="sum")+
+  scale_y_continuous(NULL, labels = scales::dollar)+
+  labs(title="Spend by loyalty card: 
+       a comparison of the two years",
+       x="Loyalty card", y="Total amount spent")+
+  theme(text = element_text(size=9),
+        axis.text.x = element_text(hjust=1))
+
+ggarrange(g7, g8,
+          ncol = 2, 
+          nrow = 1)
+
+```
+
+
+
+
+
+
+
+
+
+
+### Analysis by products
+
+#### **Purpose: analysing the key products and departments of sales for kroger.**
+
+
+```{r,warning=FALSE, error=FALSE, echo=FALSE, message=F}
+commodity_count <-  df %>% 
+  group_by(commodity,department) %>% 
+  summarise(count=n(),sale=sum(spend_amt)) %>% 
+  arrange(desc(count))
+
+ggplot(commodity_count,aes(x=reorder(commodity,count),y=count,fill = department))+
+  geom_histogram(stat="identity")+
+  theme(text = element_text(size=8),
+        axis.text.x = element_text(hjust=1))+
+  labs(title="Top product by sale count",
+       x="Product type", y="Count sold")+
+    scale_y_continuous(NULL, labels = scales::dollar)+
+  coord_flip()
+
+ggplot(commodity_count,aes(x=reorder(commodity,sale),y=sale,fill = department))+
+  geom_histogram(stat="identity")+
+  theme(text = element_text(size=8),
+        axis.text.x = element_text(hjust=1))+
+  labs(title="Top product by sale amount",
+       x="Product type", y="Total sale")+
+    scale_y_continuous(NULL, labels = scales::dollar)+
+  coord_flip()
+
+```
+
+#### **Insights from the plot:** 
+* As we can from the plot above, *Food department* is the clear winner at kroger, making up for for almost 82% of all sale. 
+* Within Food department, the top products are Grocery Staple, Produce, Dairy and Frozen food.
+* 2 categories from the Non-food department also fall in the top 10, they are Household items and Personal Care items.
+* Share of loyalty sales improved in 2017 across all departments.
+
+
+```{r warning=FALSE, error=FALSE, echo=FALSE, message=F}
+df %>% 
+  group_by(department,loyalty_card,year) %>% 
+  ggplot(aes(department,spend_amt,fill = loyalty_card))+
+  geom_bar(position = "fill",stat="summary", fun.y="sum")+
+  ggtitle("Total product sales by departments")+
+  scale_y_continuous(labels = scales::percent)+
+  facet_grid(~year)+
+    labs(title="Sales share by Loyalty",
+       x="Department", y="Share (%)")+
+  theme(text = element_text(size=9),
+        axis.text.x = element_text(hjust=1))
+
+```
+
+
+
+
+### Analysis by Loyalty program
+
+
+#### **Purpose: Loyalty versus non-loyalty spend analysis** 
+Here, we are analysing the spend and the purchase pattern of the loyalty and the non-loyalty customers over two years of data to answer our research question *Are customer in both the groups (loyalty and non-loyalty) different in terms of spend & purchase behaviour?*
+
+*Customers enrolled in loyalty program are loyalty customers.*
+
+To analyze this we have formed two groups based on whether the customer is enrolled in loyalty program or not.Each group of customer is grouped by month of purchase, and the total spend for each month is analyzed over the year.
+
+We have used the following color coding: purple = loyalty , light purple/black = non-loyalty
+```{r include=FALSE }
+# Fetching the month and creating a new column for that in the dataset
+date <- str_split_fixed(df$date, "-", 3)
+purchase_month <- date[,2]
+df <- data.frame(purchase_month, df)
+
+## Reaserach question:
+##Are customer in both the groups (loyalty and non-loyalty) different in terms of spend & purchase behaviour?
+
+
+# Spend : on month level and year level in both the groups for both the year
+
+######################################################
+#   Total Spend monthly (loyalty v/s Non-loyalty)  #
+######################################################
+
+########### 2016 ############ 
+#### Loyalty v/s non-loyalty ####
+
+# color coding used : purple = loyalty , light purple/thistle/black = non-loyalty
+```
+
+```{r,warning=FALSE, error=FALSE }
+# Loyalty_spend2016 mothwise 
+
+L_2016 <- df %>%
+  filter(year==2016 & loyalty_card=='Y') %>%
+  group_by(household_id, purchase_month) %>%
+  summarize(Total_spend=sum(spend_amt))
+
+# Non-Loyalty_spend2016 monthwise 
+NL_2016 <- df %>%
+  filter(year==2016 & loyalty_card=='N') %>%
+  group_by(household_id, purchase_month) %>%
+  summarize(Total_spend=sum(spend_amt))
+
+```
+
+```{r, warning=FALSE, error=FALSE,fig.width=7, fig.height = 7 }
+# plot for Monthwise Spend by Loyalty & Non-Loyalty customers in 2016
+grid.arrange(L_2016 %>% 
+ ggplot(aes(purchase_month, Total_spend))+ 
+ geom_boxplot(fill="purple")+
+ labs(title="Monthwise Spend by Loyalty customers in 2016",
+ x="Month", y="Total spend ")+
+ scale_y_continuous(breaks = seq(0, 300, by=100), limits=c(0,300),labels = scales::dollar), NL_2016   %>% 
+  ggplot(aes(purchase_month, Total_spend))+ 
+  geom_boxplot(fill="thistle")+
+  labs(title="Monthwise Spend by Non-Loyalty customers in 2016",
+       x="Month", y="Total spend ")+
+  scale_y_continuous(breaks = seq(0, 300, by=100), limits=c(0,300),labels = scales::dollar)
+, nrow =2)
+```
+
+```{r echo=FALSE, warning=FALSE, error=FALSE }
+########### 2017 ############ 
+#### Loyalty v/s non-loyalty ####
+
+############ Loyalty_spend2017 mothwise ##########
+
+L_2017 <- df %>%
+  filter(year==2017 & loyalty_card=='Y') %>%
+  group_by(household_id, purchase_month) %>%
+  summarize(Total_spend=sum(spend_amt))
+
+########### Non-Loyalty_spend2017 monthwise ##########
+
+NL_2017 <- df %>%
+  filter(year==2017 & loyalty_card=='N') %>%
+  group_by(household_id, purchase_month) %>%
+  summarize(Total_spend=sum(spend_amt))
+
+```
+```{r}
+# plot for Monthwise Spend by Loyalty & Non-Loyalty customers in 2017
+```
+```{r echo=FALSE,warning=FALSE, error=FALSE,fig.width=7, fig.height = 7  }
+
+grid.arrange(L_2017 %>% 
+  ggplot(aes(purchase_month, Total_spend))+ 
+  geom_boxplot(fill="purple")+
+  labs(title="Monthwise Spend by Loyalty customers in 2017",
+       x="Month", y="Total spend")+
+  scale_y_continuous(breaks = seq(0, 300, by=100), limits=c(0,300),labels = scales::dollar)
+, NL_2017 %>% 
+  ggplot(aes(purchase_month, Total_spend))+ 
+  geom_boxplot(fill="thistle")+
+  labs(title="Monthwise Spend by Non-Loyalty customers in 2017",
+       x="Month", y="Total spend")+
+  scale_y_continuous(breaks = seq(0, 300, by=100), limits=c(0,300),labels = scales::dollar), 
+nrow =2)
+```
+
+#### **Insights from the plot:**
+ 1. The median monthly spend of customers in the Loyalty program is almost *60% times* more than the ones who are not enrolled in the loyalty program
+(this is evident from the box plot & is supported by the summary statistics).
+ 2. There are much more customers in the loyalty program who spend way more than the usual spend. However, this spend behaviour is observed relatively 
+less in non-loyalty customers.(Measure : Evident from the outliers in the plot).
+ 3. It is very evident that the monthly spend among loyalty customers is way more than that in the other group(non-loyalty).
+ 4. The median monthly spend among both the groups is almost consistent.
+ 5. There is an increase in the maximum monthly spent in both the groups from 2016 to 2017 (good news for the retailer)(source: summary statistics).
+ 
+ 
+ 
+
+#### **Purpose: Loyalty versus non-loyalty purchase analysis:**
+
+Here,each group of customer is grouped by month of purchase and the total units of each product type that they purchased for that particular month.This is analyzed for each year.
+
+```{r include=FALSE}
+################################################################################
+#   Total Units purchased (productwise) monthly (loyalty v/s Non-loyalty)    #
+###############################################################################
+
+########### 2016 ############ 
+#### Loyalty v/s non-loyalty ####
+```
+```{r, warning=FALSE, error=FALSE }
+############ Loyalty_purchase2016 monthwise ##########
+
+LP_2016 <- df %>%
+  filter(year==2016 & loyalty_card=='Y') %>%
+  group_by(product_id,household_id, purchase_month) %>%
+  summarize(Total_units=sum(total_units))
+
+############ Non-Loyalty_purchase2016 monthwise ##########
+
+NLP_2016 <- df %>%
+  filter(year==2016 & loyalty_card=='N') %>%
+  group_by(product_id,household_id, purchase_month) %>%
+  summarize(Total_units=sum(total_units))
+
+# summary(LP_2016)
+# summary(NLP_2016)
+```
+```{r,echo=FALSE, warning=FALSE, error=FALSE,fig.width=7, fig.height = 7}
+# plot for Month-wise product units purchased by Loyalty & Non-Loyalty customers in 2016
+
+grid.arrange(LP_2016 %>% 
+  ggplot(aes(purchase_month, Total_units))+ 
+  geom_boxplot(color="purple")+
+  labs(title=" Month-wise product units purchased by Loyalty customers in 2016",
+       x="Month", y="Total product units")+
+  scale_y_continuous(breaks = seq(0, 100, by=10), limits=c(0,100)), NLP_2016 %>% 
+  ggplot(aes(purchase_month, Total_units))+ 
+  geom_boxplot()+
+  labs(title=" Month-wise product units purchased by Non-Loyalty customers in 2016",
+       x="Month", y="Total product units")+
+  scale_y_continuous(breaks = seq(0, 100, by=10), limits=c(0,100)), nrow =2 )
+```
+
+```{r echo=FALSE,warning=FALSE, error=FALSE}
+#############2017##############
+
+############ Loyalty_purchase2017 monthwise ##########
+
+LP_2017 <- df %>%
+  filter(year==2017 & loyalty_card=='Y') %>%
+  group_by(product_id,household_id, purchase_month) %>%
+  summarize(Total_units=sum(total_units))
+
+############ Non-Loyalty_purchase2017 monthwise ##########
+
+NLP_2017 <- df %>%
+  filter(year==2017 & loyalty_card=='N') %>%
+  group_by(product_id,household_id, purchase_month) %>%
+  summarize(Total_units=sum(total_units))
+
+# summary(LP_2017)
+# summary(NLP_2017)
+```
+```{r}
+# plot for Month-wise product units purchased by Loyalty & Non-Loyalty customers in 2017
+```
+
+```{r echo=FALSE, warning=FALSE, error=FALSE,fig.width=7, fig.height = 7 }
+grid.arrange(LP_2017 %>% 
+  ggplot(aes(purchase_month, Total_units))+ 
+  geom_boxplot(color="purple")+
+  labs(title=" Month-wise product units purchased by Loyalty customers in 2017",
+       x="Month", y="Total product units ")+
+  scale_y_continuous(breaks = seq(0, 100, by=10), limits=c(0,100)), NLP_2017 %>% 
+  ggplot(aes(purchase_month, Total_units))+ 
+  geom_boxplot()+
+  labs(title=" Month-wise product units purchased by Non-Loyalty customers in 2017",
+       x="Month", y="Total product units ")+
+  scale_y_continuous(breaks = seq(0, 100, by=10), limits=c(0,100)), nrow =2 )
+
+```
+
+#### **Insights from the plot:**
+
+ 1. The count of units purchased by loyalty customers is higher than that purchased by the other group (evident from summary statistics and plot).
+ 2. It is observed that the count of units of a products purchased by the loyalty group has risen in 2017 (clear from the plot).
+
+
+
+
+##  Summary {.tabset .tabset-fade .tabset-pills}
+
+We had started our project with some research questions in mind. Upon our analysis we were able to find the answers to them. We also uncovered some trends and insights during this process.
+
+__Which categories of Kroger have highest share? Is it somehow related to loyalty?__
+
+We found that Food department has the major share due to categories such as Grocery Staple, Produce, Dairy and Frozen food which have highest sales. We also found that two Non-food product categories (Household and Personal Care) are in top 10 categories too.  
+We found that loyalty customers share improved slightly in 2017.
+
+__Do Demographic factors (e.g. household size, presence of children, income) affect customer spend?__
+
+Household with 3 members (and 1 child) have the biggest share followed by households with 5+members.
+Also, customers with income range 34-74K make up for biggest share at the retailer.
+
+__Are customer in both the groups (loyalty and non-loyalty) different in terms of purchase behaviour?__
+
+Yes,customer in both the groups (loyalty and non-loyalty) are different in terms of purchase behaviour.The count of units purchased monthly by loyalty customers is higher than that purchased by the non-loyalty ones.
+The count of units of a products purchased by the loyalty group has risen in 2017, *this can be researched further.*
+
+
+__How many customers are spending more over time? Less over time? Understand these customers. Of those customers who are spending more over time, which categories are growing at a faster rate? Calculate some metrics. __
+
+- The median monthly spend of customers in the Loyalty program is higher than the ones who are not enrolled in the loyalty program.
+- There are much more customers in the loyalty program who spend way more than the usual spend.
+- There is an increase in the maximum monthly spent in both the groups from 2016 to 2017, *this can be researched further.*
+
+The next thing that can be researched is that why non-loyalty customers are not willing to enroll in the loyalty program? The retailer can design some surveys around this and encourage people to participate
+in these surveys, so that the retailer can understand the reasons of non-loyalty customers not enrolling in the loyalty program.
